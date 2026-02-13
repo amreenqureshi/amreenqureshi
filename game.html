@@ -1,0 +1,1937 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Scroll Stopper – Amreen Qureshi</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Poiret+One&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0a0a0a; --text: #e0e0e0; --accent: #d4a850; }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: 'Press Start 2P', monospace;
+      -webkit-font-smoothing: none; image-rendering: pixelated;
+    }
+
+    /* Scanlines */
+    body::after {
+      content: ''; position: fixed; inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+      pointer-events: none; z-index: 999;
+    }
+
+    /* Top bar */
+    .game-topbar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.35rem 1.2rem;
+      background: rgba(10,10,10,0.92); backdrop-filter: blur(4px);
+      border-bottom: 1px solid rgba(212,168,80,0.15);
+    }
+    .game-topbar-logo {
+      font-family: 'Press Start 2P', monospace; font-size: 0.55rem;
+      color: var(--accent); text-decoration: none; letter-spacing: 0.25em;
+      line-height: 1.8; white-space: pre; opacity: 0.75;
+    }
+    .game-topbar-logo:hover { opacity: 1; }
+    .game-topbar-back {
+      font-family: 'Press Start 2P', monospace; font-size: 0.55rem;
+      color: var(--text); text-decoration: none; opacity: 0.5;
+      transition: opacity 0.2s; border: 1px solid rgba(255,255,255,0.12);
+      padding: 0.4rem 0.8rem; border-radius: 3px;
+    }
+    .game-topbar-back:hover { opacity: 1; border-color: var(--accent); color: var(--accent); }
+
+    #gameCanvas { display: block; width: 100vw; height: 100vh; background: var(--bg); }
+
+    .crt-vignette {
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.45) 100%);
+      pointer-events: none; z-index: 998;
+    }
+
+    /* ── Mobile gate ── */
+    .mobile-gate {
+      display: none;
+      position: fixed; inset: 0; z-index: 10000;
+      background: #0a0a0a;
+      flex-direction: column; align-items: center; justify-content: center;
+      padding: 2rem; text-align: center;
+    }
+    .mobile-gate h1 {
+      font-family: 'Poiret One', sans-serif; font-size: 1.8rem;
+      color: var(--accent); margin-bottom: 2rem; letter-spacing: 0.06em;
+    }
+    .mobile-gate pre {
+      font-family: 'Press Start 2P', monospace; font-size: 0.5rem;
+      color: #555; line-height: 1.6; margin-bottom: 2rem; white-space: pre;
+    }
+    .mobile-gate p {
+      font-family: 'Press Start 2P', monospace; font-size: 0.6rem;
+      color: #888; line-height: 2; max-width: 320px;
+    }
+    .mobile-gate .mg-accent { color: var(--accent); }
+    .mobile-gate a {
+      display: inline-block; margin-top: 2rem;
+      font-family: 'Press Start 2P', monospace; font-size: 0.55rem;
+      color: var(--accent); text-decoration: none;
+      border: 1px solid rgba(212,168,80,0.4); padding: 0.8rem 1.5rem;
+      border-radius: 4px; transition: all 0.2s;
+    }
+    .mobile-gate a:hover { border-color: var(--accent); background: rgba(212,168,80,0.1); }
+
+    @media (max-width: 850px), (hover: none) and (pointer: coarse) {
+      .mobile-gate { display: flex; }
+      .game-topbar, #gameCanvas, .crt-vignette { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Mobile gate -->
+  <div class="mobile-gate">
+    <h1>Amreen Qureshi</h1>
+    <pre>
+    ╔═══════════════════════╗
+    ║   S C R O L L         ║
+    ║       S T O P P E R   ║
+    ╚═══════════════════════╝
+    </pre>
+    <p>
+      This game is best played on a
+      <span class="mg-accent">desktop computer</span>
+      with a keyboard.
+    </p>
+    <p style="margin-top:1rem; color:#555;">
+      Grab a laptop, open this page,
+      and get ready to stop the scroll.
+    </p>
+    <a href="index.html">&larr; Back to Portfolio</a>
+  </div>
+
+  <!-- Desktop game -->
+  <div class="game-topbar">
+    <a href="index.html" class="game-topbar-logo">A M R E E N
+Q U R E S H I</a>
+    <a href="index.html" class="game-topbar-back">Back to Portfolio</a>
+  </div>
+
+  <canvas id="gameCanvas"></canvas>
+  <div class="crt-vignette"></div>
+
+  <script>
+  (() => {
+    // ═══════════════════════════════════════════════
+    //  SCROLL STOPPER v4 – Enhanced Portfolio Edition
+    // ═══════════════════════════════════════════════
+
+    const canvas = document.getElementById('gameCanvas');
+    if (!canvas) return; // mobile gate is showing
+    const ctx = canvas.getContext('2d');
+
+    // ── Audio ──
+    let audioCtx = null;
+    function initAudio() { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    function playTone(freq, dur, type = 'square', vol = 0.07) {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type; osc.frequency.value = freq;
+      gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + dur);
+    }
+
+    // ── Enhanced SFX ──
+    function sfxCatch(points, comboN) {
+      const base = 500 + Math.min(points || 10, 50) * 8;
+      playTone(base, 0.07, 'square', 0.06);
+      setTimeout(() => playTone(base * 1.5, 0.09, 'square', 0.05), 40);
+      if (comboN >= 5) setTimeout(() => playTone(base * 2, 0.06, 'sine', 0.04), 80);
+      if (comboN >= 10) {
+        setTimeout(() => playTone(1200, 0.05, 'sine', 0.04), 100);
+        setTimeout(() => playTone(1500, 0.05, 'sine', 0.03), 130);
+      }
+    }
+    function sfxBad() {
+      playTone(160, 0.18, 'sawtooth', 0.09);
+      playTone(90, 0.25, 'sawtooth', 0.06);
+      setTimeout(() => playTone(120, 0.12, 'square', 0.04), 60);
+    }
+    function sfxLevel() {
+      const notes = [440, 554, 659, 880, 1109];
+      notes.forEach((f, i) => setTimeout(() => playTone(f, 0.14, 'square', 0.06), i * 70));
+      setTimeout(() => playTone(880, 0.3, 'sine', 0.04), notes.length * 70);
+    }
+    function sfxGameOver() {
+      [0, 150, 300, 450].forEach((d, i) => setTimeout(() => playTone(300 - i * 55, 0.3, 'sawtooth', 0.08), d));
+      setTimeout(() => playTone(60, 0.5, 'sawtooth', 0.06), 600);
+    }
+    function sfxDash() {
+      if (!audioCtx) return;
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.07, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+      osc.connect(gain).connect(audioCtx.destination);
+      osc.start(); osc.stop(audioCtx.currentTime + 0.12);
+      setTimeout(() => playTone(900, 0.04, 'sine', 0.03), 60);
+    }
+    function sfxShield() {
+      playTone(440, 0.12, 'triangle', 0.05);
+      setTimeout(() => playTone(660, 0.12, 'triangle', 0.05), 60);
+      setTimeout(() => playTone(880, 0.1, 'sine', 0.04), 120);
+    }
+    function sfxShieldBlock() {
+      playTone(800, 0.06, 'triangle', 0.06);
+      playTone(1100, 0.04, 'square', 0.03);
+      setTimeout(() => playTone(600, 0.08, 'triangle', 0.04), 40);
+    }
+    function sfxMagnet() {
+      playTone(330, 0.1, 'sine', 0.05);
+      setTimeout(() => playTone(440, 0.1, 'sine', 0.04), 50);
+      setTimeout(() => playTone(550, 0.12, 'sine', 0.04), 100);
+    }
+    let magnetHumTimer = 0;
+    function sfxMagnetHum() {
+      magnetHumTimer++;
+      if (magnetHumTimer % 12 === 0) {
+        const f = 220 + Math.sin(magnetHumTimer * 0.1) * 40;
+        playTone(f, 0.08, 'sine', 0.015);
+      }
+    }
+    function sfxComboMilestone(n) {
+      if (n === 5) {
+        [0, 50, 100].forEach((d, i) => setTimeout(() => playTone(880 + i * 220, 0.08, 'square', 0.04), d));
+      } else if (n >= 10) {
+        [0, 40, 80, 120, 160].forEach((d, i) => setTimeout(() => playTone(660 + i * 165, 0.06, 'sine', 0.04), d));
+      }
+    }
+    let heartbeatTimer = 0;
+    function sfxHeartbeat() {
+      heartbeatTimer++;
+      if (heartbeatTimer % 50 === 0) {
+        playTone(70, 0.1, 'sine', 0.06);
+        setTimeout(() => playTone(65, 0.08, 'sine', 0.04), 120);
+      }
+    }
+    function sfxMiss() {
+      playTone(200, 0.08, 'triangle', 0.03);
+      setTimeout(() => playTone(150, 0.1, 'triangle', 0.02), 50);
+    }
+    function sfxPause()  { playTone(600, 0.04, 'sine', 0.04); }
+    function sfxResume() { playTone(800, 0.04, 'sine', 0.04); }
+
+    // Flashcard catch — magical chime
+    function sfxFlashcard() {
+      const notes = [523, 659, 784, 1047, 1319];
+      notes.forEach((f, i) => setTimeout(() => playTone(f, 0.18, 'sine', 0.05), i * 60));
+      setTimeout(() => playTone(1047, 0.4, 'triangle', 0.03), notes.length * 60);
+    }
+
+    // ── Background music ──
+    let bgMusicInterval = null;
+    const bgNotes = [262, 330, 392, 523, 392, 330];
+    let bgNoteIdx = 0;
+    function startBgMusic() {
+      if (bgMusicInterval) return;
+      bgNoteIdx = 0;
+      bgMusicInterval = setInterval(() => {
+        if (state !== STATE.PLAYING || !audioCtx) return;
+        playTone(bgNotes[bgNoteIdx % bgNotes.length], 0.15, 'sine', 0.012);
+        playTone(bgNotes[bgNoteIdx % bgNotes.length] / 2, 0.2, 'triangle', 0.008);
+        bgNoteIdx++;
+      }, 320);
+    }
+    function stopBgMusic() {
+      if (bgMusicInterval) { clearInterval(bgMusicInterval); bgMusicInterval = null; }
+    }
+
+    // ── Sizing ──
+    const CHAR_W = 12, CHAR_H = 18;
+    let cols, rows, W, H, dpr;
+    function resize() {
+      dpr = window.devicePixelRatio || 1;
+      W = window.innerWidth; H = window.innerHeight;
+      canvas.width = W * dpr; canvas.height = H * dpr;
+      canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cols = Math.floor(W / CHAR_W); rows = Math.floor(H / CHAR_H);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ═══ STATES ═══
+    const STATE = { TITLE: 0, PLAYING: 1, PAUSED: 2, GAMEOVER: 3, INTRO: 4 };
+    let state = STATE.TITLE;
+    let introFrame = 0, introParticles = [];
+    const INTRO_DUR = 120; // slightly longer for skill showcase
+    if (sessionStorage.getItem('aq-play-intro')) { sessionStorage.removeItem('aq-play-intro'); state = STATE.INTRO; }
+
+    // ═══ GAME VARS ═══
+    let score = 0, lives = 5, level = 1, combo = 0, maxCombo = 0;
+    let hiScore = parseInt(localStorage.getItem('scrollStopperHi3') || '0');
+    let frameCount = 0, shakeTimer = 0, flashTimer = 0, flashColor = '';
+    let itemsCaught = 0;
+    let titleScroll = 0;
+    let playFrames = 0;
+    let pauseEmailHitBox = null;
+    let pauseLinkedInHitBox = null;
+
+    // ═══ ABILITIES ═══
+    const DASH_COOLDOWN = 120, SHIELD_COOLDOWN = 300, SHIELD_DURATION = 90;
+    const MAGNET_COOLDOWN = 240, MAGNET_DURATION = 120, MAGNET_RANGE = 12;
+    let dashCooldown = 0, shieldCooldown = 0, shieldActive = 0;
+    let magnetCooldown = 0, magnetActive = 0;
+
+    // ═══════════════════════════════════════════════════
+    //  AMREEN'S SKILLS, EXPERIENCE & FLASHCARD SYSTEM
+    // ═══════════════════════════════════════════════════
+    const AMREEN_SKILLS = [
+      { category: 'MARKETING', icon: '◆', color: '#f59e0b',
+        skills: ['Social Media Strategy', 'Content Creation', 'Brand Management', 'SEO & Analytics', 'Campaign Mgmt'] },
+      { category: 'COMMUNICATIONS', icon: '★', color: '#38bdf8',
+        skills: ['PR & Media Relations', 'Copywriting', 'Stakeholder Engagement', 'Internal Comms', 'Crisis Comms'] },
+      { category: 'PROJECT MGMT', icon: '▶', color: '#10b981',
+        skills: ['Agile & Scrum', 'Budget Management', 'Cross-functional Teams', 'Timeline Planning', 'Risk Assessment'] },
+    ];
+
+    const AMREEN_FACTS = [
+      'Managed social media campaigns with 500K+ impressions',
+      'Led cross-functional teams of 8+ members',
+      'Northeastern University — Communications',
+      'Proficient in Canva, Hootsuite, Mailchimp & HubSpot',
+      'Built content calendars driving 40% engagement growth',
+      'Skilled in data-driven marketing & analytics strategy',
+      'Event planning & coordination expertise',
+      'Strong background in brand storytelling',
+      'Expertise in digital analytics & KPI tracking',
+      'Experience in crisis communications management',
+      'Developed integrated marketing campaigns across channels',
+      'Budget management for projects up to $50K+',
+    ];
+
+    const SKILL_FLASHCARDS = [
+      { skill: 'Social Media Strategy', detail: 'Building brands one post at a time', category: 'MARKETING' },
+      { skill: 'Content Creation', detail: 'Words that convert, visuals that stop the scroll', category: 'MARKETING' },
+      { skill: 'Brand Management', detail: 'Consistency is the secret weapon', category: 'MARKETING' },
+      { skill: 'SEO & Analytics', detail: 'Data-driven decisions, always', category: 'MARKETING' },
+      { skill: 'PR & Media Relations', detail: 'Crafting narratives that get coverage', category: 'COMMUNICATIONS' },
+      { skill: 'Copywriting', detail: 'Every word earns its place', category: 'COMMUNICATIONS' },
+      { skill: 'Stakeholder Engagement', detail: 'Aligning teams around a shared vision', category: 'COMMUNICATIONS' },
+      { skill: 'Agile & Scrum', detail: 'Sprints, standups, ship it', category: 'PROJECT MGMT' },
+      { skill: 'Budget Management', detail: 'Maximizing ROI with every dollar', category: 'PROJECT MGMT' },
+      { skill: 'Cross-functional Teams', detail: 'Bridging design, dev & marketing', category: 'PROJECT MGMT' },
+      { skill: 'Campaign Management', detail: '500K+ impressions and counting', category: 'MARKETING' },
+      { skill: 'Crisis Communications', detail: 'Cool under pressure, clear in messaging', category: 'COMMUNICATIONS' },
+    ];
+
+    // Flashcard display state
+    let flashcardDisplay = null;   // { skill, detail, category, color, timer, maxTimer }
+    let flashcardSpawnTimer = 0;
+    const FLASHCARD_SPAWN_RATE = 540; // spawn a flashcard every ~9 seconds
+    let flashcardsCaught = 0;
+
+    // Skill hint banner
+    let skillHint = null;          // { text, timer, maxTimer, color }
+    let skillHintCooldown = 0;
+
+    // Player trail
+    let playerTrail = [];
+
+    // Combo screen glow
+    let comboGlow = 0;
+
+    // Title screen state
+    let factIndex = 0;
+    let factTimer = 0;
+    let titleSkillAnim = 0;       // animation frame for skill badges
+
+    // ═══ BIOMES ═══
+    const BIOMES = [
+      { name: 'Night City', bgColor: '#0a0a0a', groundColor: '#2a2a35',
+        starColor: '#ffffff', rainColor: '#5577aa', rainChars: ['/', '\\', '|', '.'],
+        groundChars: ['~', '^', 'A', '~', '.', '~', '_'],
+        skyline: [
+          '                _____                                    ',
+          '           ___/       \\___                              ',
+          '         /     .---.      \\         .---.               ',
+          '     ___/ .---.|[] |.---.  \\___    | O  |              ',
+          '   /     |[] []|[] ||[] |      \\  .|  O |.             ',
+          '  / .---.|[] []|[] ||[] |.---.  \\_/ | O | |\\          ',
+          ' /  |[] [][] []|___|[] [][] []|    |   | | |            ',
+          '/___|[] [][] []|    [] [][] []|____|___|_| |_.---.______',
+        ],
+        skylineColors: { 'O': '#d4a850', '[': '#555566', ']': '#555566', '|': '#444455', '-': '#444455', '_': '#3a3a4a', '/': '#3a3a4a', '\\': '#3a3a4a', '.': '#3a3a4a', 'A': '#2a2a35', default: '#3a3a4a' },
+      },
+      { name: 'Desert Dawn', bgColor: '#1a0f0a', groundColor: '#3d2b1a',
+        starColor: '#ffddaa', rainColor: '#00000000', rainChars: [],
+        groundChars: ['.', '_', '.', ',', '.', '_', '.'],
+        skyline: [
+          '                                                        ',
+          '          .                      .                      ',
+          '         /|\\      .             /|\\                    ',
+          '        / | \\    /|\\          / | \\     .            ',
+          '   .   /  |  \\  / | \\   .   /  |  \\   /|\\          ',
+          '  /|\\ /   |   \\/ _|_ \\  |\\ /   |   \\ / | \\       ',
+          '  |||/    |    |_____|  |||/    |    |/  |  \\          ',
+          '__|||_____|____|     |__|||_____|____|___|___\\__________',
+        ],
+        skylineColors: { '|': '#5a3a20', '\\': '#5a3a20', '/': '#5a3a20', '_': '#4a2a15', '.': '#6a4a30', default: '#5a3a20' },
+      },
+      { name: 'Ocean Pier', bgColor: '#0a0f1a', groundColor: '#1a2535',
+        starColor: '#aaddff', rainColor: '#3366aa', rainChars: ['~', '.', '`', ','],
+        groundChars: ['~', '~', '~', '~', '^', '~', '~'],
+        skyline: [
+          '                                                        ',
+          '                  ___________                           ',
+          '                 |  PIER  42 |                          ',
+          '        _________|___________|_________                 ',
+          '       |    |    |    |    |    |    |                   ',
+          '       |    |    |    |    |    |    |                   ',
+          '  _____|____|____|____|____|____|____|_____              ',
+          '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+        ],
+        skylineColors: { '|': '#4a5a6a', '_': '#3a4a5a', 'P': '#7a8a9a', 'I': '#7a8a9a', 'E': '#7a8a9a', 'R': '#7a8a9a', '4': '#d4a850', '2': '#d4a850', '~': '#224466', default: '#4a5a6a' },
+      },
+      { name: 'Deep Forest', bgColor: '#0a1a0a', groundColor: '#1a3a1a',
+        starColor: '#aaffaa', rainColor: '#226622', rainChars: ['*', '.', ',', '`'],
+        groundChars: [',', '.', '\'', ',', '.', '`', ','],
+        skyline: [
+          '      *              *          *        *              ',
+          '     /|\\    *       /|\\   *    /|\\      /|\\         ',
+          '    / | \\  /|\\    / | \\ /|\\  / | \\   / | \\       ',
+          '   /  |  \\/ | \\  /  |  / | \\/  |  \\ /  |  \\      ',
+          '  /   |  /\\  |  \\/   | /  |  \\  |   /\\  |   \\     ',
+          ' /    | /  \\ | /\\   |/   | /\\ | /  \\ |/\\  \\    ',
+          '/_____|/____\\|/____\\_|____|/___\\|/____\\|/____\\_____',
+          '.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,.:,',
+        ],
+        skylineColors: { '*': '#44aa44', '|': '#3a5a2a', '\\': '#2a4a1a', '/': '#2a4a1a', '_': '#1a3a1a', '.': '#1a3a1a', ':': '#1a3a1a', ',': '#1a3a1a', default: '#2a4a1a' },
+      },
+      { name: 'Deep Space', bgColor: '#05050f', groundColor: '#1a1a3a',
+        starColor: '#ffffff', rainColor: '#4444aa', rainChars: ['.', ':', '.', '.'],
+        groundChars: ['=', '=', '|', '=', '=', '|', '='],
+        skyline: [
+          '                                                        ',
+          '            .  *  . *  .  *  .                          ',
+          '       ___________________________                      ',
+          '      | .  STATION  ORBIT-7  . . |                     ',
+          '      |___________________________|                     ',
+          '    __|____|____|____|____|____|___|__                   ',
+          '   |====|====|====|====|====|====|====|                 ',
+          '===|====|====|====|====|====|====|====|=================',
+        ],
+        skylineColors: { '=': '#333366', '|': '#444488', '*': '#aaaaff', '.': '#6666aa', 'S': '#8888cc', 'T': '#8888cc', 'A': '#8888cc', 'I': '#8888cc', 'O': '#d4a850', 'N': '#8888cc', 'R': '#8888cc', 'B': '#8888cc', '-': '#6666aa', '7': '#d4a850', default: '#3a3a6a' },
+      },
+    ];
+
+    function getBiome() { return BIOMES[Math.min(Math.floor((level - 1) / 2), BIOMES.length - 1)]; }
+
+    // ═══ STARS & RAIN ═══
+    const stars = Array.from({length: 100}, () => ({
+      x: Math.random() * 2000, y: Math.random() * 1200,
+      char: ['.', '+', '*', '·', '∙', '✦'][Math.floor(Math.random() * 6)],
+      blink: Math.random() * 300, speed: 0.15 + Math.random() * 0.25,
+      brightness: 0.3 + Math.random() * 0.7,
+    }));
+    const rain = Array.from({length: 60}, () => ({
+      x: Math.random() * 2000, y: Math.random() * 1200,
+      speed: 2 + Math.random() * 3, opacity: 0.06 + Math.random() * 0.12,
+    }));
+
+    // ═══ BACKGROUND OBJECTS ═══
+    const bgObjects = [];
+    const BG_OBJ_TYPES = {
+      shootingStar: {
+        art: [['─', '─', '═', '═', '★']],
+        colors: ['#fff', '#ddd', '#ffd', '#ffa', '#ff8'],
+        speed: { x: 2.5, y: 0.8 }, alpha: 0.6, life: 80,
+      },
+      comet: {
+        art: [['·','·','·','.','.','-','=','≡','◉']],
+        colors: ['#446','#558','#66a','#88c','#aae','#ccf','#ddf','#eef','#fff'],
+        speed: { x: 1.8, y: 0.5 }, alpha: 0.5, life: 120,
+      },
+      shipRight: {
+        art: [
+          [' ',' ','▄','▀','▀','▀','▶'],
+          ['▀','▀','█','█','█','█','▶'],
+          [' ',' ','▀','▄','▄','▄','▶'],
+        ],
+        colors: ['#556','#667','#778','#889','#99a','#aab','#bbc'],
+        speed: { x: 0.4, y: 0 }, alpha: 0.25, life: 300,
+      },
+      shipLeft: {
+        art: [
+          ['◀','▀','▀','▀','▄',' ',' '],
+          ['◀','█','█','█','█','▀','▀'],
+          ['◀','▄','▄','▄','▀',' ',' '],
+        ],
+        colors: ['#665','#776','#887','#998','#aa9','#bba','#ccb'],
+        speed: { x: -0.35, y: 0 }, alpha: 0.25, life: 320,
+      },
+      satellite: {
+        art: [
+          ['─','[','█',']','─'],
+          [' ',' ','|',' ',' '],
+        ],
+        colors: ['#888','#999','#aaa','#999','#888'],
+        speed: { x: 0.15, y: 0.02 }, alpha: 0.2, life: 500,
+      },
+      ufo: {
+        art: [
+          [' ',' ','▄','▀','▀','▄',' ',' '],
+          ['▀','▀','▀','▀','▀','▀','▀','▀'],
+          [' ','▀','▄','▄','▄','▄','▀',' '],
+        ],
+        colors: ['#4a4','#5b5','#6c6','#5b5','#4a4','#3a3','#5b5','#4a4'],
+        speed: { x: 0.25, y: 0.08 }, alpha: 0.22, life: 350,
+      },
+      nebula: {
+        art: [
+          [' ','·','.',':','.','·',' '],
+          ['.','░','░','▒','░','░','.'],
+          [':','░','▒','▓','▒','░',':'],
+          ['.','░','░','▒','░','░','.'],
+          [' ','·','.',':','.','·',' '],
+        ],
+        colors: ['#424','#535','#646','#757','#646','#535','#424'],
+        speed: { x: 0.05, y: 0.01 }, alpha: 0.1, life: 800,
+      },
+    };
+
+    function spawnBgObject() {
+      const typeKeys = Object.keys(BG_OBJ_TYPES);
+      const weights = [4, 3, 2, 2, 2, 1, 1];
+      const totalW = weights.reduce((a, b) => a + b, 0);
+      let r = Math.random() * totalW;
+      let chosen = typeKeys[0];
+      for (let i = 0; i < typeKeys.length; i++) {
+        r -= weights[i]; if (r <= 0) { chosen = typeKeys[i]; break; }
+      }
+      const type = BG_OBJ_TYPES[chosen];
+      const maxRow = Math.floor(rows * 0.7);
+      const obj = {
+        type: chosen, art: type.art, colors: type.colors,
+        x: type.speed.x > 0 ? -12 : (type.speed.x < 0 ? cols + 12 : Math.random() * cols),
+        y: 2 + Math.random() * maxRow,
+        vx: type.speed.x * (0.7 + Math.random() * 0.6),
+        vy: type.speed.y * (0.7 + Math.random() * 0.6) * (Math.random() > 0.5 ? 1 : -1),
+        alpha: type.alpha * (0.6 + Math.random() * 0.4),
+        life: type.life, maxLife: type.life,
+        pulseOffset: Math.random() * 100,
+      };
+      if (chosen === 'shootingStar' || chosen === 'comet') {
+        obj.vy = obj.vx * (0.2 + Math.random() * 0.3);
+      }
+      bgObjects.push(obj);
+    }
+
+    let bgSpawnTimer = 0;
+    function updateBgObjects() {
+      bgSpawnTimer++;
+      const spawnRate = 90 + Math.floor(Math.random() * 60);
+      if (bgSpawnTimer >= spawnRate && bgObjects.length < 8) {
+        spawnBgObject(); bgSpawnTimer = 0;
+      }
+      for (let i = bgObjects.length - 1; i >= 0; i--) {
+        const o = bgObjects[i];
+        o.x += o.vx; o.y += o.vy; o.life--;
+        if (o.type === 'ufo') o.y += Math.sin(frameCount * 0.05 + o.pulseOffset) * 0.1;
+        if (o.type === 'satellite') o.y += Math.sin(frameCount * 0.02 + o.pulseOffset) * 0.03;
+        if (o.life <= 0 || o.x > cols + 20 || o.x < -20 || o.y > rows || o.y < -5) {
+          bgObjects.splice(i, 1);
+        }
+      }
+    }
+
+    function renderBgObjects(envDim) {
+      setFont(CHAR_W - 1);
+      bgObjects.forEach(o => {
+        const fadeIn = Math.min(1, (o.maxLife - o.life) / 20);
+        const fadeOut = Math.min(1, o.life / 20);
+        const pulse = 0.85 + 0.15 * Math.sin(frameCount * 0.04 + o.pulseOffset);
+        const baseAlpha = o.alpha * fadeIn * fadeOut * pulse * envDim;
+        o.art.forEach((row, ri) => {
+          row.forEach((ch, ci) => {
+            if (ch === ' ') return;
+            const col = o.colors[ci % o.colors.length];
+            const cx = Math.floor(o.x) + ci;
+            const cy = Math.floor(o.y) + ri;
+            if (cx >= 0 && cx < cols && cy >= 0 && cy < rows) {
+              drawChar(ch, cx, cy, col, baseAlpha);
+            }
+          });
+        });
+      });
+    }
+
+    // ═══ PLAYER ═══
+    const player = { x: 0, speed: 0, width: 7, art: ['  /A\\  ',' /|=|\\ ','/ | | \\','  \\_/  '] };
+
+    // ═══ ITEMS ═══
+    const GOOD_ITEMS = [
+      { char: '♥', frame: '[♥]', label: 'LIKE',    points: 10, color: '#e1306c', desc: '+10' },
+      { char: '★', frame: '<★>', label: 'STAR',    points: 25, color: '#d4a850', desc: '+25' },
+      { char: '↑', frame: '(↑)', label: 'FOLLOW',  points: 15, color: '#0a66c2', desc: '+15' },
+      { char: '◆', frame: '<◆>', label: 'SHARE',   points: 30, color: '#f59e0b', desc: '+30' },
+      { char: '>', frame: '[>]', label: 'REPLY',   points: 15, color: '#38bdf8', desc: '+15' },
+      { char: '=', frame: '(=)', label: 'BRIEF',   points: 35, color: '#a78bfa', desc: '+35' },
+      { char: 'V', frame: '{V}', label: 'TASK',    points: 20, color: '#34d399', desc: '+20' },
+      { char: '$', frame: '<$>', label: 'BUDGET',  points: 40, color: '#fbbf24', desc: '+40' },
+      { char: '%', frame: '[%]', label: 'KPI',     points: 50, color: '#10b981', desc: '+50' },
+    ];
+    const BAD_ITEMS = [
+      { char: 'X', frame: '!X!', label: 'SPAM',        color: '#ef4444', desc: '-1 HP' },
+      { char: '~', frame: '!~!', label: 'TROLL',       color: '#dc2626', desc: '-1 HP' },
+      { char: '?', frame: '!?!', label: 'MISCOMM',     color: '#f87171', desc: '-1 HP' },
+      { char: '!', frame: '!!!', label: 'DEADLINE',    color: '#ff4444', desc: '-1 HP' },
+      { char: '#', frame: '!#!', label: 'SCOPE CREEP', color: '#e11d48', desc: '-1 HP' },
+    ];
+
+    let items = [], particles = [], floatingTexts = [];
+
+    // ═══ INPUT ═══
+    const keys = {}, justPressed = {};
+    window.addEventListener('keydown', e => {
+      if (!keys[e.key]) justPressed[e.key] = true;
+      keys[e.key] = true;
+      if (state === STATE.INTRO) {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); state = STATE.TITLE; }
+      } else if (state === STATE.TITLE) {
+        if (e.key === ' ' || e.key === 'Enter') {
+          e.preventDefault(); initAudio(); startGame();
+        }
+      } else if (state === STATE.PLAYING) {
+        if (e.key === ' ' || e.key === 'p' || e.key === 'P' || e.key === 'Escape') { e.preventDefault(); state = STATE.PAUSED; sfxPause(); stopBgMusic(); }
+      } else if (state === STATE.PAUSED) {
+        if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { e.preventDefault(); state = STATE.PLAYING; sfxResume(); startBgMusic(); }
+        if (e.key === ' ') { e.preventDefault(); initAudio(); startGame(); }
+        if (e.key === 'l' || e.key === 'L') {
+          window.open('https://linkedin.com/in/qureshiamreen', '_blank');
+        }
+        if (e.key === 'm' || e.key === 'M') { openScoreEmail(); }
+      } else if (state === STATE.GAMEOVER) {
+        if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); initAudio(); startGame(); }
+      }
+    });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    function hitTest(mx, my, box) {
+      return box && mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h;
+    }
+    canvas.addEventListener('mousemove', (e) => {
+      if (state === STATE.PAUSED) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        canvas.style.cursor = (hitTest(mx, my, pauseEmailHitBox) || hitTest(mx, my, pauseLinkedInHitBox)) ? 'pointer' : 'default';
+      } else { canvas.style.cursor = 'default'; }
+    });
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      if (state === STATE.PAUSED) {
+        const rect = canvas.getBoundingClientRect();
+        const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        if (hitTest(mx, my, pauseEmailHitBox)) { openScoreEmail(); return; }
+        if (hitTest(mx, my, pauseLinkedInHitBox)) { window.open('https://linkedin.com/in/qureshiamreen', '_blank'); return; }
+      }
+      if (state === STATE.INTRO) state = STATE.TITLE;
+      else if (state === STATE.TITLE) startGame();
+      else if (state === STATE.GAMEOVER) startGame();
+      else if (state === STATE.PAUSED) state = STATE.PLAYING;
+    });
+
+    // ═══ CONTACT ═══
+    function getMailtoURL() {
+      const subj = encodeURIComponent('From your Portfolio Game — Scroll Stopper');
+      const secs = Math.floor(playFrames / 60);
+      const body = encodeURIComponent(
+        `Hey Amreen!\n\n` +
+        `Just played Scroll Stopper on your portfolio and had to reach out.\n\n` +
+        `My stats:\n` +
+        `  Score: ${score}\n` +
+        `  Level: ${level} | Combo: x${maxCombo}\n` +
+        `  Items Caught: ${itemsCaught} | Skills Discovered: ${flashcardsCaught} | Time: ${secs}s\n\n` +
+        `Pretty impressive, right?\n\n`
+      );
+      return `mailto:qureshi.amr@northeastern.edu?subject=${subj}&body=${body}`;
+    }
+    function openScoreEmail() { window.open(getMailtoURL(), '_self'); }
+
+    // ═══ GAME LOGIC ═══
+    function startGame() {
+      initAudio(); state = STATE.PLAYING;
+      score = 0; lives = 5; level = 1; combo = 0; maxCombo = 0; itemsCaught = 0; playFrames = 0;
+      flashcardsCaught = 0; flashcardDisplay = null; flashcardSpawnTimer = 0;
+      skillHint = null; skillHintCooldown = 0;
+      playerTrail = []; comboGlow = 0;
+      startBgMusic();
+      items = []; particles = []; floatingTexts = [];
+      player.x = cols / 2; player.speed = 0;
+      dashCooldown = 0; shieldCooldown = 0; shieldActive = 0;
+      magnetCooldown = 0; magnetActive = 0;
+      sfxLevel();
+    }
+
+    const MAX_ITEMS = 5;
+    function spawnItem() {
+      if (items.length >= MAX_ITEMS) return;
+      const isGood = Math.random() > (0.24 + level * 0.012);
+      const pool = isGood ? GOOD_ITEMS : BAD_ITEMS;
+      const template = pool[Math.floor(Math.random() * pool.length)];
+      const baseSpeed = 0.7 + Math.random() * 0.6;
+      const levelMult = 1 + level * 0.1;
+      const zigzag = level >= 3 ? (Math.random() < 0.4 ? (0.3 + Math.random() * 0.4) * (Math.random() < 0.5 ? 1 : -1) : 0) : 0;
+      items.push({
+        x: 5 + Math.random() * (cols - 10), y: -3,
+        speed: baseSpeed * levelMult, zigzag,
+        zigzagSpeed: 0.04 + Math.random() * 0.03,
+        ...template, isGood, time: 0, isFlashcard: false,
+      });
+    }
+
+    // Special flashcard item spawner
+    function spawnFlashcard() {
+      if (items.length >= MAX_ITEMS + 1) return; // allow one extra for flashcards
+      const card = SKILL_FLASHCARDS[Math.floor(Math.random() * SKILL_FLASHCARDS.length)];
+      const catData = AMREEN_SKILLS.find(s => s.category === card.category) || AMREEN_SKILLS[0];
+      items.push({
+        x: 5 + Math.random() * (cols - 10), y: -3,
+        speed: 0.5 + Math.random() * 0.3,
+        zigzag: 0, zigzagSpeed: 0,
+        char: '✦', frame: '{✦}', label: 'SKILL',
+        points: 75, color: '#d4a850', desc: '+75',
+        isGood: true, time: 0, isFlashcard: true,
+        flashcardData: card, flashcardColor: catData.color,
+      });
+    }
+
+    function spawnParticles(x, y, color, count) {
+      for (let i = 0; i < count; i++) particles.push({
+        x, y, vx: (Math.random()-0.5)*3.5, vy: -0.8-Math.random()*2.5,
+        life: 18+Math.random()*18, maxLife: 18+Math.random()*18,
+        char: ['*','.','+','·','°','✧','◇','⟡'][Math.floor(Math.random()*8)], color,
+      });
+    }
+    function addFloatingText(x, y, text, color) {
+      floatingTexts.push({ x, y, text, color, life: 50, maxLife: 50 });
+    }
+
+    let spawnTimer = 0;
+    const GROUND_Y = 0.82;
+
+    function update() {
+      frameCount++;
+      stars.forEach(s => s.blink += s.speed);
+      const biome = getBiome();
+      rain.forEach(r => {
+        if (!biome.rainChars.length) return;
+        r.x += r.speed * 0.5; r.y += r.speed;
+        if (r.y > H/CHAR_H) { r.y = -2; r.x = Math.random()*(W/CHAR_W); }
+        if (r.x > W/CHAR_W) r.x -= W/CHAR_W;
+      });
+      if (shakeTimer > 0) shakeTimer--;
+      if (flashTimer > 0) flashTimer--;
+      updateBgObjects();
+
+      // Title screen animations
+      if (state === STATE.TITLE) {
+        factTimer++;
+        if (factTimer >= 240) { // rotate facts every ~4 seconds
+          factTimer = 0;
+          factIndex = (factIndex + 1) % AMREEN_FACTS.length;
+        }
+        titleSkillAnim++;
+      }
+
+      if (state === STATE.INTRO) { introFrame++; if (introFrame >= INTRO_DUR) state = STATE.TITLE; }
+      if (state !== STATE.PLAYING) { for (const k in justPressed) delete justPressed[k]; return; }
+      playFrames++;
+
+      const groundRow = Math.floor(rows * GROUND_Y);
+      const accel = 0.18, friction = 0.88;
+      let maxSpeed = 0.9, isDashing = false;
+
+      // Dash
+      if (dashCooldown > 0) dashCooldown--;
+      if ((justPressed['x']||justPressed['X']) && dashCooldown <= 0) {
+        dashCooldown = DASH_COOLDOWN; isDashing = true; sfxDash(); maxSpeed = 2.8;
+        if (keys['ArrowLeft']||keys['a']) player.speed = -2.8;
+        else if (keys['ArrowRight']||keys['d']) player.speed = 2.8;
+        else player.speed *= 2.5;
+        spawnParticles(player.x, groundRow-2, '#d4a850', 5);
+      }
+      // Shield
+      if (shieldCooldown > 0) shieldCooldown--;
+      if (shieldActive > 0) shieldActive--;
+      if ((justPressed['Shift']||justPressed['z']||justPressed['Z']) && shieldCooldown <= 0) {
+        shieldCooldown = SHIELD_COOLDOWN; shieldActive = SHIELD_DURATION; sfxShield();
+      }
+      // Magnet
+      if (magnetCooldown > 0) magnetCooldown--;
+      if (magnetActive > 0) magnetActive--;
+      if ((justPressed['e']||justPressed['E']) && magnetCooldown <= 0) {
+        magnetCooldown = MAGNET_COOLDOWN; magnetActive = MAGNET_DURATION; sfxMagnet();
+      }
+
+      if (!isDashing) {
+        if (keys['ArrowLeft']||keys['a']) player.speed -= accel;
+        if (keys['ArrowRight']||keys['d']) player.speed += accel;
+      }
+      player.speed *= friction;
+      if (Math.abs(player.speed) > maxSpeed) player.speed = maxSpeed * Math.sign(player.speed);
+      if (Math.abs(player.speed) < 0.01) player.speed = 0;
+      player.x += player.speed;
+      if (player.x < 3) { player.x = 3; player.speed = 0; }
+      if (player.x > cols-4) { player.x = cols-4; player.speed = 0; }
+
+      // Player trail
+      if (Math.abs(player.speed) > 0.15) {
+        playerTrail.push({ x: player.x, y: groundRow - 2, alpha: 0.5, life: 20 });
+        if (playerTrail.length > 25) playerTrail.shift();
+      }
+      for (let i = playerTrail.length - 1; i >= 0; i--) {
+        playerTrail[i].life--;
+        playerTrail[i].alpha *= 0.92;
+        if (playerTrail[i].life <= 0) playerTrail.splice(i, 1);
+      }
+
+      // Combo glow
+      comboGlow = combo > 3 ? Math.min(1, (combo - 3) / 12) : 0;
+
+      // Spawn regular items
+      spawnTimer++;
+      if (spawnTimer >= Math.max(70, 190 - level*12)) { spawnItem(); spawnTimer = 0; }
+
+      // Spawn flashcard items periodically
+      flashcardSpawnTimer++;
+      if (flashcardSpawnTimer >= FLASHCARD_SPAWN_RATE) {
+        spawnFlashcard();
+        flashcardSpawnTimer = 0;
+      }
+
+      // Flashcard display timer
+      if (flashcardDisplay) {
+        flashcardDisplay.timer--;
+        if (flashcardDisplay.timer <= 0) flashcardDisplay = null;
+      }
+
+      // Skill hint timer
+      if (skillHint) {
+        skillHint.timer--;
+        if (skillHint.timer <= 0) skillHint = null;
+      }
+      if (skillHintCooldown > 0) skillHintCooldown--;
+
+      // Trigger skill hints periodically
+      if (!skillHint && skillHintCooldown <= 0 && playFrames > 300 && Math.random() < 0.002) {
+        const fact = AMREEN_FACTS[Math.floor(Math.random() * AMREEN_FACTS.length)];
+        skillHint = { text: fact, timer: 180, maxTimer: 180, color: '#d4a850' };
+        skillHintCooldown = 600; // at least 10 seconds between hints
+      }
+
+      // Items
+      const pL = player.x-3.5, pR = player.x+3.5, pY = groundRow-4;
+      for (let i = items.length-1; i >= 0; i--) {
+        const it = items[i];
+        it.y += it.speed * 0.07; it.time++;
+        if (it.zigzag) {
+          it.x += Math.sin(it.time * it.zigzagSpeed) * it.zigzag * 0.15;
+          it.x = Math.max(3, Math.min(cols-4, it.x));
+        }
+        if (magnetActive > 0 && it.isGood) {
+          const dx = player.x - it.x;
+          if (Math.abs(dx) < MAGNET_RANGE) it.x += dx * 0.06;
+        }
+        if (it.y >= pY-1.5 && it.y <= pY+3 && it.x >= pL && it.x <= pR) {
+          if (it.isGood) {
+            combo++; if (combo > maxCombo) maxCombo = combo;
+            const pts = it.points * Math.min(combo, 10);
+            score += pts; itemsCaught++;
+
+            if (it.isFlashcard) {
+              // Flashcard caught — show skill overlay
+              flashcardsCaught++;
+              const card = it.flashcardData;
+              const catData = AMREEN_SKILLS.find(s => s.category === card.category) || AMREEN_SKILLS[0];
+              flashcardDisplay = {
+                skill: card.skill, detail: card.detail,
+                category: card.category, color: catData.color,
+                timer: 180, maxTimer: 180, // 3 seconds
+              };
+              sfxFlashcard();
+              spawnParticles(it.x, it.y, '#d4a850', 12);
+              spawnParticles(it.x, it.y, '#fff', 6);
+              addFloatingText(it.x, it.y-1, `SKILL UNLOCKED! +${pts}`, '#d4a850');
+            } else {
+              sfxCatch(it.points, combo);
+              if (combo === 5 || combo === 10 || combo === 15) sfxComboMilestone(combo);
+              spawnParticles(it.x, it.y, it.color, 6);
+              addFloatingText(it.x, it.y-1, `+${pts}${combo>1?' x'+combo:''}`, it.color);
+            }
+          } else {
+            if (shieldActive > 0) {
+              spawnParticles(it.x, it.y, '#4488ff', 8);
+              addFloatingText(it.x, it.y-1, 'BLOCKED!', '#4488ff');
+              sfxShieldBlock();
+            } else {
+              lives--; combo = 0; sfxBad(); shakeTimer = 10; flashTimer = 6; flashColor = '#ef4444';
+              spawnParticles(it.x, it.y, '#ef4444', 10);
+              addFloatingText(it.x, it.y-1, it.label+'!', '#ef4444');
+              if (lives <= 0) {
+                state = STATE.GAMEOVER; sfxGameOver(); stopBgMusic();
+                if (score > hiScore) { hiScore = score; localStorage.setItem('scrollStopperHi3', String(hiScore)); }
+              }
+            }
+          }
+          items.splice(i, 1); continue;
+        }
+        if (it.y > rows+3) { if (it.isGood) { combo = 0; sfxMiss(); } items.splice(i, 1); }
+      }
+
+      // Particles & floating text
+      for (let i = particles.length-1; i >= 0; i--) {
+        const p = particles[i]; p.x += p.vx*0.08; p.y += p.vy*0.08; p.vy += 0.06;
+        if (--p.life <= 0) particles.splice(i, 1);
+      }
+      for (let i = floatingTexts.length-1; i >= 0; i--) {
+        floatingTexts[i].y -= 0.04; if (--floatingTexts[i].life <= 0) floatingTexts.splice(i, 1);
+      }
+
+      // Level up
+      const nl = Math.floor(score / 400) + 1;
+      if (nl > level) {
+        level = nl; sfxLevel(); flashTimer = 12; flashColor = '#d4a850';
+        const b = getBiome();
+        addFloatingText(cols/2-6, rows/2-1, `LEVEL ${level}`, '#d4a850');
+        addFloatingText(cols/2-b.name.length/2, rows/2+1, b.name, '#888888');
+      }
+
+      // Ambient sounds
+      if (magnetActive > 0) sfxMagnetHum();
+      else magnetHumTimer = 0;
+      if (lives === 1) sfxHeartbeat();
+      else heartbeatTimer = 0;
+
+      for (const k in justPressed) delete justPressed[k];
+    }
+
+    // ═══ DRAWING HELPERS ═══
+    function setFont(s) { ctx.font = `${s}px 'Press Start 2P', monospace`; }
+    function drawChar(ch, c, r, col, a=1) { ctx.globalAlpha=a; ctx.fillStyle=col; ctx.fillText(ch, c*CHAR_W, r*CHAR_H); }
+    function drawText(t, c, r, col, a=1) { ctx.globalAlpha=a; ctx.fillStyle=col; for(let i=0;i<t.length;i++) ctx.fillText(t[i],(c+i)*CHAR_W,r*CHAR_H); }
+    function drawTC(t, r, col, a=1) { drawText(t, Math.floor((cols-t.length)/2), r, col, a); }
+    function drawPx(t, x, y, col, a=1, s=10) { ctx.globalAlpha=a; ctx.fillStyle=col; setFont(s); ctx.fillText(t,x,y); setFont(CHAR_W-1); }
+    function drawRoundRect(x, y, w, h, r, fill, alpha=1) {
+      ctx.globalAlpha = alpha; ctx.fillStyle = fill;
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill();
+    }
+    function drawPxText(text, x, y, color, alpha, size) {
+      ctx.globalAlpha = alpha; ctx.fillStyle = color;
+      setFont(size); ctx.fillText(text, x, y);
+    }
+
+    // Gradient rectangle helper
+    function drawGradRect(x, y, w, h, color1, color2, alpha=1, direction='horizontal') {
+      ctx.globalAlpha = alpha;
+      const grad = direction === 'horizontal'
+        ? ctx.createLinearGradient(x, y, x + w, y)
+        : ctx.createLinearGradient(x, y, x, y + h);
+      grad.addColorStop(0, color1);
+      grad.addColorStop(1, color2);
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, w, h);
+    }
+
+    // ═══ RENDER ═══
+    function render() {
+      ctx.globalAlpha = 1;
+      if (shakeTimer > 0) { ctx.save(); ctx.translate((Math.random()-0.5)*5,(Math.random()-0.5)*5); }
+
+      if (state === STATE.INTRO) { renderIntro(); if (shakeTimer > 0) ctx.restore(); return; }
+
+      const biome = getBiome();
+      ctx.fillStyle = biome.bgColor; ctx.fillRect(-10,-10,W+20,H+20);
+
+      if (flashTimer > 0) {
+        ctx.globalAlpha = flashTimer*0.02; ctx.fillStyle = flashColor;
+        ctx.fillRect(0,0,W,H); ctx.globalAlpha = 1;
+      }
+
+      setFont(CHAR_W-1); ctx.textBaseline = 'top';
+
+      const isPlaying = state === STATE.PLAYING || state === STATE.PAUSED || state === STATE.GAMEOVER;
+      const envDim = isPlaying ? 0.4 : 1.0;
+      stars.forEach(s => {
+        const sx = s.x%(W/CHAR_W+10), sy = s.y%(H/CHAR_H+5);
+        const a = s.brightness*(0.4+0.6*Math.sin(s.blink*0.04)) * envDim;
+        if (a > 0.08) drawChar(s.char, sx, sy, biome.starColor, a);
+      });
+      if (biome.rainChars.length) rain.forEach((r,i) => drawChar(biome.rainChars[i%biome.rainChars.length], r.x, r.y, biome.rainColor, r.opacity * envDim));
+
+      renderBgObjects(envDim);
+
+      const gRow = Math.floor(rows*GROUND_Y);
+      const sky = biome.skyline, skyStart = gRow - sky.length;
+      sky.forEach((line,i) => {
+        const sc = Math.floor((cols-line.length)/2);
+        for (let j=0;j<line.length;j++) { const ch=line[j]; if(ch===' ')continue; drawChar(ch, sc+j, skyStart+i, biome.skylineColors[ch]||biome.skylineColors.default, 0.65 * (isPlaying ? 0.5 : 1)); }
+      });
+      for (let c=0;c<cols;c++) { drawChar(biome.groundChars[c%biome.groundChars.length], c, gRow, biome.groundColor, 0.5); drawChar('.', c, gRow+1, biome.groundColor, 0.2); }
+
+      if (state === STATE.TITLE) renderTitle();
+      else renderGame(gRow);
+
+      if (shakeTimer > 0) ctx.restore();
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  TITLE SCREEN — Reorganized with Skills Showcase
+    // ═══════════════════════════════════════════════════
+    function renderTitle() {
+      ctx.globalAlpha = 0.6; ctx.fillStyle = '#000'; ctx.fillRect(0,0,W,H);
+      ctx.globalAlpha = 1; setFont(CHAR_W-1); ctx.textBaseline = 'top';
+
+      titleScroll += 0.008;
+
+      function rowAlpha(row, base) {
+        const fadeIn = Math.min(1, Math.max(0, (titleScroll * rows - row + rows * 0.35) / 8));
+        return base * fadeIn;
+      }
+
+      let y = Math.max(3, Math.floor(rows * 0.06));
+
+      // ── Compact title with glow effect ──
+      const titleArt = [
+        '╔═══╗╔═══╗╔═══╗╔═══╗╔╗  ╔╗',
+        '║╔═╗║║╔═╗║║╔═╗║║╔═╗║║║  ║║',
+        '║╚══╗║║   ║╚═╝║║║ ║║║║  ║║',
+        '╚══╗║║║   ║╔╗╔╝║║ ║║║║  ║║',
+        '║╚═╝║║╚═╝║║║║╚╗║╚═╝║║╚═╗║╚═╗',
+        '╚═══╝╚═══╝╚╝╚═╝╚═══╝╚══╝╚══╝',
+      ];
+      const stopperArt = [
+        '╔═══╗╔════╗╔═══╗╔═══╗╔═══╗╔═══╗╔═══╗',
+        '║╔═╗║╚═╗╔═╝║╔═╗║║╔═╗║║╔═╗║║╔══╝║╔═╗║',
+        '║╚══╗  ║║  ║║ ║║║╚═╝║║╚═╝║║╚══╗║╚═╝║',
+        '╚══╗║  ║║  ║║ ║║║╔══╝║╔══╝║╔══╝║╔╗╔╝',
+        '║╚═╝║  ║║  ║╚═╝║║║   ║║   ║╚══╗║║║╚╗',
+        '╚═══╝  ╚╝  ╚═══╝╚╝   ╚╝   ╚═══╝╚╝╚═╝',
+      ];
+
+      // Draw title glow (subtle golden radial behind the text)
+      const titleCenterX = W / 2;
+      const titleCenterY = (y + 6) * CHAR_H;
+      const glowPulse = 0.08 + 0.04 * Math.sin(frameCount * 0.02);
+      ctx.globalAlpha = glowPulse;
+      const titleGlow = ctx.createRadialGradient(titleCenterX, titleCenterY, 0, titleCenterX, titleCenterY, 280);
+      titleGlow.addColorStop(0, '#d4a850');
+      titleGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = titleGlow;
+      ctx.fillRect(titleCenterX - 300, titleCenterY - 100, 600, 200);
+      ctx.globalAlpha = 1;
+
+      titleArt.forEach((l,i) => {
+        const a = rowAlpha(y+i, 0.55 + 0.3*Math.sin(frameCount*0.025 + i*0.25));
+        drawTC(l, y+i, '#d4a850', a);
+      });
+      y += titleArt.length;
+      stopperArt.forEach((l,i) => {
+        const a = rowAlpha(y+i, 0.55 + 0.3*Math.sin(frameCount*0.025 + (i+6)*0.25));
+        drawTC(l, y+i, '#d4a850', a);
+      });
+      y += stopperArt.length + 1;
+
+      // ── Subtitle ──
+      drawTC('A  P O R T F O L I O  G A M E', y, '#888', rowAlpha(y, 0.5));
+      y += 1;
+      drawTC('by Amreen Qureshi', y, '#d4a850', rowAlpha(y, 0.45));
+      y += 3;
+
+      // ═══ SKILLS SHOWCASE ═══
+      const skillsHeaderAlpha = rowAlpha(y, 0.5);
+      drawTC('╌╌╌╌╌╌╌╌╌ E X P E R T I S E ╌╌╌╌╌╌╌╌╌', y, '#d4a850', skillsHeaderAlpha * 0.4);
+      y += 2;
+
+      // Draw 3 skill category badges side by side
+      AMREEN_SKILLS.forEach((cat, ci) => {
+        const catRow = y;
+        const catOffset = Math.floor(cols / 2) + (ci - 1) * 20 - 8;
+        const pulse = 0.5 + 0.25 * Math.sin(frameCount * 0.03 + ci * 2.1);
+        const ra = rowAlpha(catRow, pulse);
+
+        // Category icon and name
+        drawText(cat.icon, catOffset, catRow, cat.color, ra);
+        drawText(cat.category, catOffset + 2, catRow, cat.color, ra * 0.8);
+
+        // Skills list (show 2 per category to keep it compact)
+        const visibleSkills = cat.skills.slice(0, 3);
+        visibleSkills.forEach((sk, si) => {
+          const skillAlpha = rowAlpha(catRow + 1 + si, 0.3 + 0.1 * Math.sin(frameCount * 0.04 + ci + si));
+          const shortSk = sk.length > 16 ? sk.substring(0, 15) + '.' : sk;
+          drawText(shortSk, catOffset + 1, catRow + 1 + si, '#777', skillAlpha);
+        });
+      });
+      y += 5;
+
+      // ═══ ROTATING FUN FACT ═══
+      drawTC('╌╌╌╌╌╌╌╌╌╌ D I D  Y O U  K N O W ? ╌╌╌╌╌╌╌╌╌╌', y, '#555', rowAlpha(y, 0.25));
+      y += 1;
+      const fact = AMREEN_FACTS[factIndex];
+      const factAlpha = Math.min(1, factTimer < 30 ? factTimer / 30 : factTimer > 210 ? (240 - factTimer) / 30 : 1);
+      drawTC(fact, y, '#d4a850', rowAlpha(y, 0.5 * factAlpha));
+      y += 3;
+
+      // ═══ THE MISSION (compact story) ═══
+      const storyLines = [
+        '┌──────────────────────────────────────────┐',
+        '│                                          │',
+        '│   The feeds are flooding. Catch the good │',
+        '│   stuff. Dodge the noise. Stay alive.    │',
+        '│                                          │',
+        '│   Collect SKILL cards to discover        │',
+        '│   Amreen\'s portfolio & expertise.        │',
+        '│                                          │',
+        '└──────────────────────────────────────────┘',
+      ];
+      storyLines.forEach((l,i) => {
+        const isBorder = (i===0 || i===storyLines.length-1 || i===1 || i===storyLines.length-2);
+        const col = isBorder ? '#333' : '#bbb';
+        const al = rowAlpha(y+i, isBorder ? 0.2 : 0.45);
+        drawTC(l, y+i, col, al);
+      });
+      y += storyLines.length + 1;
+
+      // ═══ CATCH / DODGE — compact dual column ═══
+      const halfW = 20;
+      const leftCol = Math.floor(cols/2) - halfW - 2;
+      const rightCol = Math.floor(cols/2) + 3;
+
+      // CATCH header
+      drawText('── C A T C H ──', leftCol, y, '#d4a850', rowAlpha(y, 0.5));
+      drawText('── D O D G E ──', rightCol, y, '#ef4444', rowAlpha(y, 0.5));
+      y += 1;
+
+      // CATCH items (compact, 2 per row)
+      GOOD_ITEMS.forEach((it, i) => {
+        if (i >= 5) return; // show first 5
+        const row = y + i;
+        const entry = `${it.frame} ${it.label.padEnd(8)} ${it.desc}`;
+        drawText(entry, leftCol, row, it.color, rowAlpha(row, 0.5));
+      });
+
+      // DODGE items
+      BAD_ITEMS.forEach((it, i) => {
+        const row = y + i;
+        const entry = `${it.frame} ${it.label.padEnd(12)} -1HP`;
+        drawText(entry, rightCol, row, it.color, rowAlpha(row, 0.5));
+      });
+      y += Math.max(5, BAD_ITEMS.length) + 1;
+
+      // Special flashcard item callout
+      const fcAlpha = rowAlpha(y, 0.5 + 0.3 * Math.sin(frameCount * 0.05));
+      drawTC('{✦} SKILL CARDS  — Catch to discover Amreen\'s expertise!', y, '#d4a850', fcAlpha);
+      y += 2;
+
+      // ═══ CONTROLS (condensed single block) ═══
+      drawTC('──────────── C O N T R O L S ────────────', y, '#444', rowAlpha(y, 0.25));
+      y += 1;
+      const ctrlCompact = [
+        '[← →] Move    [X] Dash    [SHIFT] Shield    [E] Magnet    [SPACE] Pause',
+      ];
+      ctrlCompact.forEach((l,i) => {
+        const sc = Math.floor((cols-l.length)/2);
+        const ra = rowAlpha(y+i, 1);
+        for (let j=0;j<l.length;j++) {
+          const ch = l[j]; if (ch===' ') continue;
+          let col = '#666', al = ra*0.4;
+          if (ch==='[' || ch===']') { col = '#777'; al = ra*0.5; }
+          else if ('←→'.includes(ch)) { col = '#aaa'; al = ra*0.6; }
+          else if (l.substring(j).startsWith('X]')) { col = '#d4a850'; al = ra*0.6; }
+          else if (l.substring(j).startsWith('SHIFT')) { col = '#4488ff'; al = ra*0.5; }
+          else if (l.substring(j-1,j+1) === 'E]') { col = '#10b981'; al = ra*0.6; }
+          drawChar(ch, sc+j, y+i, col, al);
+        }
+      });
+      y += ctrlCompact.length;
+
+      drawTC('5 biomes unlock as you level up', y, '#555', rowAlpha(y, 0.18));
+      y += 2;
+
+      // ── Play prompt (always visible at bottom) ──
+      const startRow = Math.max(y, rows - 5);
+      if (Math.sin(frameCount*0.07) > 0) {
+        drawTC('═══════════════════════════════════════', startRow, '#d4a850', 0.6);
+        drawTC('    > > >  PRESS SPACE TO PLAY  < < <  ', startRow+1, '#d4a850', 0.85);
+        drawTC('═══════════════════════════════════════', startRow+2, '#d4a850', 0.6);
+      } else {
+        drawTC('═══════════════════════════════════════', startRow, '#d4a850', 0.15);
+        drawTC('═══════════════════════════════════════', startRow+2, '#d4a850', 0.15);
+      }
+
+      if (hiScore > 0) drawTC(`HIGH SCORE: ${hiScore}`, startRow+4, '#555', 0.35);
+      drawTC('amreenqureshi.com', rows-1, '#333', 0.2);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  GAME RENDER — Enhanced with trails, glow, flashcards
+    // ═══════════════════════════════════════════════════
+    function renderGame(gRow) {
+      ctx.globalAlpha = 0.15; ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+
+      const pY = gRow - 4;
+
+      // ══════════ COMBO SCREEN GLOW ══════════
+      if (comboGlow > 0 && state === STATE.PLAYING) {
+        const glowAlpha = comboGlow * 0.12 * (0.7 + 0.3 * Math.sin(frameCount * 0.08));
+        // Left edge
+        drawGradRect(0, 0, 60, H, '#d4a850', 'transparent', glowAlpha, 'horizontal');
+        // Right edge
+        drawGradRect(W - 60, 0, 60, H, 'transparent', '#d4a850', glowAlpha, 'horizontal');
+        // Top edge
+        drawGradRect(0, 0, W, 40, '#d4a850', 'transparent', glowAlpha * 0.5, 'vertical');
+      }
+
+      // ══════════ HUD TOP BAR ══════════
+      drawRoundRect(0, 38, W, 52, 0, '#000000', 0.55);
+
+      setFont(14);
+      drawPxText(`SCORE  ${score}`, 16, 68, '#d4a850', 0.95, 14);
+
+      const biome = getBiome();
+      const lvlText = `LVL ${level}  ${biome.name}`;
+      ctx.globalAlpha = 0.6; ctx.fillStyle = '#888';
+      setFont(10); ctx.fillText(lvlText, W/2 - ctx.measureText(lvlText).width/2, 64);
+
+      // Lives
+      setFont(16);
+      for (let i = 0; i < Math.max(0, lives); i++) {
+        drawPxText('♥', W - 28 - i * 26, 68, '#e1306c', 0.9, 16);
+      }
+
+      // Skills discovered counter
+      if (flashcardsCaught > 0) {
+        drawPxText(`✦ ${flashcardsCaught}`, W - 28 - Math.max(0, lives) * 26 - 60, 68, '#d4a850', 0.6, 10);
+      }
+
+      // ══════════ ABILITY BAR ══════════
+      const abY = 96;
+      const abW = 110, abH = 22, abGap = 12;
+      const abTotalW = 3 * abW + 2 * abGap;
+      const abStartX = Math.floor((W - abTotalW) / 2);
+
+      const dashReady = dashCooldown <= 0;
+      const dashPct = dashReady ? 1 : 1 - dashCooldown / DASH_COOLDOWN;
+      drawAbilityPill(abStartX, abY, abW, abH, 'DASH', dashPct, '#d4a850', dashReady);
+
+      const shieldOn = shieldActive > 0;
+      const shieldReady = shieldCooldown <= 0;
+      const shieldPct = shieldOn ? shieldActive/SHIELD_DURATION : (shieldReady ? 1 : 1-shieldCooldown/SHIELD_COOLDOWN);
+      drawAbilityPill(abStartX + abW + abGap, abY, abW, abH, 'SHIELD', shieldPct, '#4488ff', shieldReady || shieldOn);
+
+      const magnetOn = magnetActive > 0;
+      const magnetReady = magnetCooldown <= 0;
+      const magnetPct = magnetOn ? magnetActive/MAGNET_DURATION : (magnetReady ? 1 : 1-magnetCooldown/MAGNET_COOLDOWN);
+      drawAbilityPill(abStartX + (abW + abGap)*2, abY, abW, abH, 'MAGNET', magnetPct, '#10b981', magnetReady || magnetOn);
+
+      if (combo > 1) {
+        const comboAlpha = 0.6 + 0.4 * Math.sin(frameCount * 0.1);
+        const comboX = abStartX + abTotalW + 16;
+        drawRoundRect(comboX, abY - 2, 148, abH + 4, 6, '#f59e0b', 0.12);
+        drawPxText(`x${combo} COMBO`, comboX + 8, abY + 15, '#f59e0b', comboAlpha, 12);
+      }
+
+      setFont(CHAR_W - 1);
+
+      // ══════════ SKILL HINT BANNER ══════════
+      if (skillHint && state === STATE.PLAYING) {
+        const ht = skillHint;
+        const fadeIn = Math.min(1, (ht.maxTimer - ht.timer) / 30);
+        const fadeOut = Math.min(1, ht.timer / 30);
+        const hintAlpha = fadeIn * fadeOut;
+
+        const bannerY = 126;
+        const bannerH = 28;
+        drawRoundRect(W/2 - 260, bannerY, 520, bannerH, 8, '#0a0a0a', 0.85 * hintAlpha);
+        ctx.globalAlpha = 0.3 * hintAlpha; ctx.strokeStyle = ht.color; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(W/2 - 260, bannerY, 520, bannerH, 8); ctx.stroke();
+
+        drawPxText('✦ ' + ht.text, W/2 - 245, bannerY + 18, ht.color, 0.7 * hintAlpha, 8);
+      }
+
+      // ══════════ SHIELD / MAGNET AURAS ══════════
+      if (shieldOn) {
+        const p = 0.2 + 0.12 * Math.sin(frameCount * 0.15);
+        ctx.globalAlpha = p; ctx.strokeStyle = '#4488ff'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.ellipse(player.x * CHAR_W, (pY + 2) * CHAR_H, 42, 36, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        // Inner glow
+        ctx.globalAlpha = p * 0.3;
+        const shieldGlow = ctx.createRadialGradient(
+          player.x * CHAR_W, (pY + 2) * CHAR_H, 5,
+          player.x * CHAR_W, (pY + 2) * CHAR_H, 42
+        );
+        shieldGlow.addColorStop(0, '#4488ff');
+        shieldGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = shieldGlow;
+        ctx.fillRect(player.x * CHAR_W - 50, (pY + 2) * CHAR_H - 40, 100, 80);
+
+        drawPxText('SHIELD', player.x * CHAR_W - 28, (pY - 1.5) * CHAR_H, '#4488ff', 0.4 + 0.3 * Math.sin(frameCount * 0.2), 8);
+      }
+      if (magnetOn) {
+        const p = 0.12 + 0.08 * Math.sin(frameCount * 0.12);
+        ctx.globalAlpha = p; ctx.strokeStyle = '#10b981'; ctx.lineWidth = 1;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.ellipse(player.x * CHAR_W, (pY + 2) * CHAR_H, MAGNET_RANGE * CHAR_W * 0.5, 30, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Magnet pull lines
+        const pullAlpha = 0.1 + 0.05 * Math.sin(frameCount * 0.1);
+        items.forEach(it => {
+          if (it.isGood && Math.abs(it.x - player.x) < MAGNET_RANGE) {
+            ctx.globalAlpha = pullAlpha;
+            ctx.strokeStyle = '#10b981'; ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            ctx.moveTo(player.x * CHAR_W, (pY + 2) * CHAR_H);
+            ctx.lineTo(it.x * CHAR_W, it.y * CHAR_H);
+            ctx.stroke();
+          }
+        });
+      }
+
+      // ══════════ PLAYER TRAIL ══════════
+      setFont(CHAR_W - 1);
+      playerTrail.forEach(t => {
+        const trailChar = '·';
+        drawChar(trailChar, Math.floor(t.x), t.y, '#d4a850', t.alpha * 0.5);
+      });
+
+      // ══════════ PLAYER ══════════
+      player.art.forEach((line, i) => {
+        const sc = Math.floor(player.x - player.width / 2);
+        for (let j = 0; j < line.length; j++) {
+          const ch = line[j]; if (ch === ' ') continue;
+          let col = '#d4a850';
+          if (ch === 'A') col = '#e1306c';
+          else if (ch === '=' || ch === '|') col = '#ffffff';
+          else if (ch === '_' || ch === '/' || ch === '\\') col = '#c49840';
+          drawChar(ch, sc + j, pY + i, col, 1.0);
+        }
+      });
+
+      // Player glow (subtle glow under player)
+      ctx.globalAlpha = 0.06 + 0.03 * Math.sin(frameCount * 0.04);
+      const playerGlow = ctx.createRadialGradient(
+        player.x * CHAR_W, (pY + 2) * CHAR_H, 2,
+        player.x * CHAR_W, (pY + 2) * CHAR_H, 35
+      );
+      playerGlow.addColorStop(0, '#d4a850');
+      playerGlow.addColorStop(1, 'transparent');
+      ctx.fillStyle = playerGlow;
+      ctx.fillRect(player.x * CHAR_W - 40, (pY - 1) * CHAR_H, 80, 80);
+
+      // ══════════ FALLING ITEMS ══════════
+      items.forEach(it => {
+        const px = it.x * CHAR_W;
+        const py = it.y * CHAR_H;
+        const pulse = 0.8 + 0.2 * Math.sin(it.time * 0.08);
+
+        setFont(7);
+        const labelW = ctx.measureText(it.label).width;
+        setFont(16);
+        const charW = ctx.measureText(it.char).width;
+
+        const pillW = Math.max(labelW + 24, charW + 24, 56);
+        const pillH = 44;
+        const pillX = px - pillW / 2;
+        const pillY = py - 4;
+
+        if (it.isFlashcard) {
+          // Special golden flashcard item with shimmer
+          const shimmer = 0.15 + 0.1 * Math.sin(it.time * 0.06);
+          drawRoundRect(pillX - 4, pillY - 4, pillW + 8, pillH + 8, 12, '#d4a850', shimmer * pulse);
+          drawRoundRect(pillX, pillY, pillW, pillH, 8, '#1a1500', 0.9 * pulse);
+
+          ctx.globalAlpha = 0.6 * pulse; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.roundRect(pillX, pillY, pillW, pillH, 8); ctx.stroke();
+
+          // Spinning sparkles around flashcard
+          for (let s = 0; s < 4; s++) {
+            const angle = frameCount * 0.05 + s * Math.PI / 2;
+            const sparkX = px + Math.cos(angle) * (pillW/2 + 8);
+            const sparkY = py + pillH/2 - 4 + Math.sin(angle) * (pillH/2 + 6);
+            drawPxText('✧', sparkX - 3, sparkY, '#d4a850', 0.4 * pulse, 6);
+          }
+        } else if (it.isGood) {
+          drawRoundRect(pillX, pillY, pillW, pillH, 8, it.color, 0.12 * pulse);
+          ctx.globalAlpha = 0.25 * pulse; ctx.strokeStyle = it.color; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.roundRect(pillX, pillY, pillW, pillH, 8); ctx.stroke();
+        } else {
+          drawRoundRect(pillX, pillY, pillW, pillH, 8, '#ff0000', 0.15 * pulse);
+          const warn = 0.3 + 0.4 * Math.sin(it.time * 0.2);
+          ctx.globalAlpha = warn; ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.roundRect(pillX, pillY, pillW, pillH, 8); ctx.stroke();
+        }
+
+        // Main character
+        setFont(16);
+        const cw = ctx.measureText(it.char).width;
+        ctx.globalAlpha = pulse; ctx.fillStyle = it.color;
+        ctx.fillText(it.char, px - cw / 2, pillY + 22);
+
+        // Label
+        setFont(7);
+        const lw = ctx.measureText(it.label).width;
+        ctx.globalAlpha = 0.55 * pulse; ctx.fillStyle = it.color;
+        ctx.fillText(it.label, px - lw / 2, pillY + 36);
+
+        setFont(CHAR_W - 1);
+      });
+
+      // ══════════ PARTICLES ══════════
+      particles.forEach(p => drawChar(p.char, Math.floor(p.x), Math.floor(p.y), p.color, p.life / p.maxLife));
+
+      // ══════════ FLOATING SCORE TEXT ══════════
+      floatingTexts.forEach(ft => {
+        const alpha = ft.life / ft.maxLife;
+        drawPxText(ft.text, ft.x * CHAR_W, ft.y * CHAR_H, ft.color, alpha, 12);
+      });
+
+      // ══════════ FLASHCARD SKILL OVERLAY ══════════
+      if (flashcardDisplay && state === STATE.PLAYING) {
+        const fd = flashcardDisplay;
+        const fadeIn = Math.min(1, (fd.maxTimer - fd.timer) / 20);
+        const fadeOut = Math.min(1, fd.timer / 20);
+        const alpha = fadeIn * fadeOut;
+
+        // Semi-transparent overlay at bottom center
+        const cardW = 420, cardH = 90;
+        const cardX = W/2 - cardW/2;
+        const cardY = H - 140;
+
+        // Glow behind card
+        ctx.globalAlpha = alpha * 0.15;
+        const cardGlow = ctx.createRadialGradient(W/2, cardY + cardH/2, 10, W/2, cardY + cardH/2, cardW/2);
+        cardGlow.addColorStop(0, fd.color);
+        cardGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = cardGlow;
+        ctx.fillRect(cardX - 50, cardY - 30, cardW + 100, cardH + 60);
+
+        // Card background
+        drawRoundRect(cardX, cardY, cardW, cardH, 12, '#0d0d0d', 0.95 * alpha);
+
+        // Border with category color
+        ctx.globalAlpha = 0.5 * alpha; ctx.strokeStyle = fd.color; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.roundRect(cardX, cardY, cardW, cardH, 12); ctx.stroke();
+
+        // Category badge
+        drawRoundRect(cardX + 12, cardY + 10, 100, 20, 4, fd.color, 0.2 * alpha);
+        drawPxText(fd.category, cardX + 18, cardY + 24, fd.color, 0.8 * alpha, 7);
+
+        // "SKILL UNLOCKED" label
+        drawPxText('SKILL UNLOCKED', cardX + 124, cardY + 24, '#d4a850', 0.5 * alpha, 7);
+
+        // Skill name
+        drawPxText('✦ ' + fd.skill, cardX + 20, cardY + 52, '#fff', 0.9 * alpha, 12);
+
+        // Detail
+        drawPxText(fd.detail, cardX + 20, cardY + 74, '#888', 0.5 * alpha, 8);
+
+        // Sparkle decoration
+        const sparkleAlpha = alpha * (0.3 + 0.2 * Math.sin(frameCount * 0.1));
+        drawPxText('✧', cardX + cardW - 30, cardY + 20, fd.color, sparkleAlpha, 10);
+        drawPxText('✧', cardX + cardW - 50, cardY + 55, fd.color, sparkleAlpha * 0.6, 8);
+      }
+
+      // ══════════ PAUSE SCREEN ══════════
+      pauseEmailHitBox = null; pauseLinkedInHitBox = null;
+      if (state === STATE.PAUSED) {
+        ctx.globalAlpha = 0.7; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+
+        const bw = 460, bh = 480;
+        const bx = W/2 - bw/2, by = H/2 - bh/2 - 20;
+
+        drawRoundRect(bx, by, bw, bh, 12, '#0d0d0d', 0.97);
+        ctx.globalAlpha = 0.3; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 12); ctx.stroke();
+
+        let ty = by + 28;
+        drawPxText('P A U S E D', W/2 - 56, ty, '#d4a850', 0.9, 14);
+        ty += 14;
+
+        // Witty stat quips
+        const playSeconds = Math.floor(playFrames / 60);
+        const catchRate = itemsCaught > 0 ? Math.round((itemsCaught / Math.max(1, itemsCaught + (5-lives))) * 100) : 0;
+
+        const wittyLines = [
+          { icon: '◆', text: `Score: ${score}`, sub: score > 200 ? 'Not bad for a scroll-stopper.' : 'Warming up, are we?', color: '#d4a850' },
+          { icon: '♥', text: `Lives: ${lives}/5`, sub: lives >= 4 ? 'Barely a scratch.' : lives >= 2 ? 'Battle scars build character.' : 'Hanging by a thread...', color: '#e1306c' },
+          { icon: '★', text: `Level ${level} — ${getBiome().name}`, sub: level >= 4 ? 'Deep in the trenches.' : level >= 2 ? 'Getting the hang of it.' : 'Just getting started.', color: '#888' },
+          { icon: '↑', text: `Best Combo: x${maxCombo}`, sub: maxCombo >= 8 ? 'Marketing genius energy.' : maxCombo >= 4 ? 'Decent chain game.' : 'Combos are your friend.', color: '#f59e0b' },
+          { icon: '✦', text: `Skills Found: ${flashcardsCaught}`, sub: flashcardsCaught >= 5 ? 'Portfolio expert!' : flashcardsCaught >= 2 ? 'Keep collecting!' : 'Catch golden cards for skills.', color: '#d4a850' },
+        ];
+
+        ty += 18;
+        wittyLines.forEach((line, i) => {
+          const ly = ty + i * 36;
+          drawPxText(line.icon, bx + 22, ly, line.color, 0.7, 10);
+          drawPxText(line.text, bx + 44, ly, '#ccc', 0.8, 9);
+          drawPxText(line.sub, bx + 44, ly + 16, '#555', 0.4, 6);
+        });
+
+        // ── Skills mini-showcase ──
+        ty = ty + wittyLines.length * 36 + 4;
+        ctx.globalAlpha = 0.08; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(bx + 20, ty); ctx.lineTo(bx + bw - 20, ty); ctx.stroke();
+        ty += 10;
+
+        drawPxText('AMREEN\'S TOOLKIT', bx + 22, ty, '#888', 0.4, 7);
+        ty += 16;
+
+        // Show skills as compact badges
+        AMREEN_SKILLS.forEach((cat, ci) => {
+          const badgeX = bx + 22 + ci * 145;
+          const badgePulse = 0.35 + 0.15 * Math.sin(frameCount * 0.04 + ci * 2);
+          drawRoundRect(badgeX, ty - 8, 135, 42, 6, cat.color, 0.06);
+          drawPxText(cat.icon + ' ' + cat.category, badgeX + 6, ty + 4, cat.color, badgePulse, 6);
+          // Show top 2 skills
+          drawPxText(cat.skills[0], badgeX + 6, ty + 16, '#666', 0.3, 5);
+          drawPxText(cat.skills[1], badgeX + 6, ty + 26, '#555', 0.25, 5);
+        });
+        ty += 46;
+
+        // ── Divider ──
+        ctx.globalAlpha = 0.08; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(bx + 20, ty); ctx.lineTo(bx + bw - 20, ty); ctx.stroke();
+        ty += 14;
+
+        // ── CTA ──
+        const ctaW = bw - 40, ctaH = 58;
+        const ctaX = bx + 20, ctaY = ty;
+        drawRoundRect(ctaX, ctaY, ctaW, ctaH, 8, '#d4a850', 0.06);
+        ctx.globalAlpha = 0.2; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(ctaX, ctaY, ctaW, ctaH, 8); ctx.stroke();
+
+        const ctaPulse = 0.7 + 0.15 * Math.sin(frameCount * 0.05);
+        drawPxText('Impressed? Let me know.', ctaX + 65, ctaY + 16, '#d4a850', ctaPulse, 8);
+
+        setFont(7);
+        const linkStartX = ctaX + 80;
+        const liLabel = '[L] LinkedIn';
+        const gap = '     ';
+        const emLabel = '[M] Email';
+
+        drawPxText(liLabel, linkStartX, ctaY + 34, '#d4a850', 0.6, 7);
+        const liW = ctx.measureText(liLabel).width;
+        ctx.globalAlpha = 0.35; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(linkStartX, ctaY + 44); ctx.lineTo(linkStartX + liW, ctaY + 44); ctx.stroke();
+        pauseLinkedInHitBox = { x: linkStartX, y: ctaY + 24, w: liW, h: 24 };
+
+        const emX = linkStartX + liW + ctx.measureText(gap).width;
+        drawPxText(emLabel, emX, ctaY + 34, '#d4a850', 0.6, 7);
+        const emW = ctx.measureText(emLabel).width;
+        ctx.globalAlpha = 0.35; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(emX, ctaY + 44); ctx.lineTo(emX + emW, ctaY + 44); ctx.stroke();
+        pauseEmailHitBox = { x: emX, y: ctaY + 24, w: emW, h: 24 };
+
+        drawPxText('(your score is auto-attached)', ctaX + 65, ctaY + 50, '#555', 0.25, 6);
+
+        ty = ctaY + ctaH + 16;
+        if (Math.sin(frameCount * 0.06) > 0) {
+          drawPxText('[P / ESC]  Resume', W/2 - 70, ty, '#888', 0.45, 8);
+        }
+        drawPxText('[SPACE] starts the game over', W/2 - 100, ty + 22, '#444', 0.25, 6);
+      }
+
+      // ══════════ GAME OVER — Enhanced with portfolio highlights ══════════
+      if (state === STATE.GAMEOVER) {
+        ctx.globalAlpha = 0.7; ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+
+        const cy = H * 0.22;
+        const boxW = 440, boxH = 420;
+        drawRoundRect(W/2 - boxW/2, cy - 20, boxW, boxH, 12, '#111', 0.95);
+        ctx.globalAlpha = 0.35; ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.roundRect(W/2 - boxW/2, cy - 20, boxW, boxH, 12); ctx.stroke();
+
+        drawPxText('G A M E   O V E R', W/2 - 90, cy + 16, '#ef4444', 0.9, 14);
+
+        let sy = cy + 50;
+        drawPxText(`SCORE: ${score}`, W/2 - 70, sy, '#d4a850', 0.9, 12); sy += 28;
+        drawPxText(`ITEMS: ${itemsCaught}`, W/2 - 65, sy, '#aaa', 0.6, 10); sy += 22;
+        drawPxText(`COMBO: x${maxCombo}`, W/2 - 65, sy, '#f59e0b', 0.7, 10); sy += 22;
+        drawPxText(`SKILLS: ${flashcardsCaught} discovered`, W/2 - 85, sy, '#d4a850', 0.6, 10); sy += 22;
+        drawPxText(`LVL ${level} - ${getBiome().name}`, W/2 - 75, sy, '#888', 0.5, 9); sy += 28;
+
+        if (score >= hiScore && score > 0) {
+          const p = 0.55 + 0.45 * Math.sin(frameCount * 0.1);
+          drawPxText('★ NEW HIGH SCORE ★', W/2 - 85, sy, '#d4a850', p, 11); sy += 28;
+        } else {
+          drawPxText(`HI-SCORE: ${hiScore}`, W/2 - 60, sy, '#555', 0.5, 9); sy += 28;
+        }
+
+        // ── Portfolio highlight ──
+        ctx.globalAlpha = 0.08; ctx.strokeStyle = '#d4a850'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(W/2 - boxW/2 + 20, sy); ctx.lineTo(W/2 + boxW/2 - 20, sy); ctx.stroke();
+        sy += 14;
+
+        drawPxText('Want to see more of Amreen\'s work?', W/2 - 130, sy, '#888', 0.45, 8);
+        sy += 20;
+
+        // Skills summary
+        const skillSummary = AMREEN_SKILLS.map(s => s.category).join('  ·  ');
+        drawPxText(skillSummary, W/2 - ctx.measureText(skillSummary).width * 0.5 * (6/10), sy, '#d4a850', 0.35, 6);
+        sy += 18;
+
+        // Random portfolio fact
+        const goFact = AMREEN_FACTS[Math.floor(frameCount * 0.003) % AMREEN_FACTS.length];
+        drawPxText('✦ ' + goFact, W/2 - 160, sy, '#777', 0.3, 6);
+        sy += 26;
+
+        if (Math.sin(frameCount * 0.06) > 0) {
+          drawPxText('PRESS SPACE TO RETRY', W/2 - 90, sy, '#aaa', 0.7, 10);
+        }
+
+        const quips = [
+          '"She definitely didn\'t rage-quit."',
+          '"Even the best PMs miss a deadline."',
+          '"Analytics say: try again."',
+          '"That combo though..."',
+          '"Scope creep got the best of you."',
+          '"48% open rate on the retry button."',
+          '"The brief was unclear. Not your fault."',
+        ];
+        const quip = quips[Math.floor(score * 0.01 + level) % quips.length];
+        ctx.globalAlpha = 0.3; ctx.fillStyle = '#555'; setFont(7);
+        ctx.fillText(quip, W/2 - ctx.measureText(quip).width/2, sy + 28);
+      }
+
+      setFont(CHAR_W - 1);
+    }
+
+    // ── Ability pill helper ──
+    function drawAbilityPill(x, y, w, h, label, pct, color, ready) {
+      drawRoundRect(x, y, w, h, 6, '#111', 0.7);
+      const fillW = Math.max(0, (w - 4) * pct);
+      if (fillW > 0) drawRoundRect(x + 2, y + 2, fillW, h - 4, 4, color, ready ? 0.25 : 0.1);
+      ctx.globalAlpha = ready ? 0.5 : 0.15; ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.stroke();
+      setFont(8);
+      const lw = ctx.measureText(label).width;
+      const lx = x + (w - lw) / 2;
+      const ly = y + h / 2 + 4;
+      ctx.globalAlpha = ready ? 0.8 : 0.35; ctx.fillStyle = ready ? color : '#555';
+      ctx.fillText(label, lx, ly);
+      if (ready) drawRoundRect(x + w - 14, y + h/2 - 3, 6, 6, 3, color, 0.8);
+    }
+
+    // ═══════════════════════════════════════════════════
+    //  INTRO ANIMATION — Enhanced with skill words
+    // ═══════════════════════════════════════════════════
+    function sfxWarpArrive() {
+      initAudio();
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+
+      const arrO = audioCtx.createOscillator();
+      const arrG = audioCtx.createGain();
+      arrO.type = 'sine';
+      arrO.frequency.setValueAtTime(2800, t);
+      arrO.frequency.exponentialRampToValueAtTime(90, t + 0.65);
+      arrG.gain.setValueAtTime(0.06, t);
+      arrG.gain.exponentialRampToValueAtTime(0.001, t + 0.7);
+      arrO.connect(arrG).connect(audioCtx.destination);
+      arrO.start(t); arrO.stop(t + 0.7);
+
+      const nLen = Math.floor(audioCtx.sampleRate * 0.8);
+      const nBuf = audioCtx.createBuffer(1, nLen, audioCtx.sampleRate);
+      const nD = nBuf.getChannelData(0);
+      for (let i = 0; i < nLen; i++) nD[i] = Math.random() * 2 - 1;
+      const nSrc = audioCtx.createBufferSource(); nSrc.buffer = nBuf;
+      const nFilt = audioCtx.createBiquadFilter();
+      nFilt.type = 'highpass';
+      nFilt.frequency.setValueAtTime(3200, t);
+      nFilt.frequency.exponentialRampToValueAtTime(150, t + 0.7);
+      const nG = audioCtx.createGain();
+      nG.gain.setValueAtTime(0.04, t);
+      nG.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
+      nSrc.connect(nFilt).connect(nG).connect(audioCtx.destination);
+      nSrc.start(t); nSrc.stop(t + 0.8);
+
+      const decO = audioCtx.createOscillator();
+      const decG = audioCtx.createGain();
+      decO.type = 'sawtooth';
+      decO.frequency.setValueAtTime(320, t);
+      decO.frequency.exponentialRampToValueAtTime(45, t + 0.9);
+      decG.gain.setValueAtTime(0.04, t);
+      decG.gain.exponentialRampToValueAtTime(0.001, t + 0.95);
+      decO.connect(decG).connect(audioCtx.destination);
+      decO.start(t); decO.stop(t + 0.95);
+
+      const notes = [880, 780, 660, 560, 480, 420, 380, 340, 300, 260];
+      notes.forEach((freq, i) => {
+        const delay = 0.25 + i * 0.1;
+        const o = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        o.type = 'triangle';
+        o.frequency.setValueAtTime(freq, t + delay);
+        g.gain.setValueAtTime(0.025, t + delay);
+        g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.12);
+        o.connect(g).connect(audioCtx.destination);
+        o.start(t + delay); o.stop(t + delay + 0.12);
+      });
+
+      const thO = audioCtx.createOscillator();
+      const thG = audioCtx.createGain();
+      thO.type = 'sine';
+      thO.frequency.setValueAtTime(75, t + 1.45);
+      thO.frequency.exponentialRampToValueAtTime(28, t + 1.75);
+      thG.gain.setValueAtTime(0.09, t + 1.45);
+      thG.gain.exponentialRampToValueAtTime(0.001, t + 1.8);
+      thO.connect(thG).connect(audioCtx.destination);
+      thO.start(t + 1.45); thO.stop(t + 1.8);
+
+      const subO = audioCtx.createOscillator();
+      const subG = audioCtx.createGain();
+      subO.type = 'sine';
+      subO.frequency.setValueAtTime(40, t);
+      subO.frequency.linearRampToValueAtTime(30, t + 1.6);
+      subG.gain.setValueAtTime(0.05, t);
+      subG.gain.linearRampToValueAtTime(0.06, t + 0.6);
+      subG.gain.exponentialRampToValueAtTime(0.001, t + 1.65);
+      subO.connect(subG).connect(audioCtx.destination);
+      subO.start(t); subO.stop(t + 1.65);
+    }
+
+    // Skill word particles for the intro
+    let introSkillWords = [];
+
+    function initIntro() {
+      introFrame = 0;
+      introParticles = [];
+      introSkillWords = [];
+      sfxWarpArrive();
+      const biome = BIOMES[0];
+      const gRow = Math.floor(rows * GROUND_Y);
+      const noiseChars = '░▒▓█▀▄│─┌┐└┘├┤·.+*:;~^><'.split('');
+
+      function addIP(sx, sy, tx, ty, ch, color, alpha, arriveBase) {
+        introParticles.push({
+          sx, sy, tx, ty, char: ch, color, alpha,
+          arriveAt: arriveBase + Math.random() * 12,
+        });
+      }
+
+      // Ground
+      for (let c = 0; c < cols; c++) {
+        addIP(c, rows + 5 + Math.random() * 10, c, gRow,
+          biome.groundChars[c % biome.groundChars.length], biome.groundColor, 0.5, 5);
+        if (c % 3 === 0)
+          addIP(c, rows + 8 + Math.random() * 8, c, gRow + 1, '.', biome.groundColor, 0.2, 8);
+      }
+
+      // Skyline
+      const sky = biome.skyline, skyStart = gRow - sky.length;
+      sky.forEach((line, i) => {
+        const sc = Math.floor((cols - line.length) / 2);
+        for (let j = 0; j < line.length; j++) {
+          const ch = line[j]; if (ch === ' ') continue;
+          const tc = sc + j, fromLeft = tc < cols / 2;
+          addIP(
+            fromLeft ? -8 - Math.random() * 15 : cols + 8 + Math.random() * 15,
+            skyStart + i + (Math.random() - 0.5) * 2,
+            tc, skyStart + i, ch,
+            biome.skylineColors[ch] || biome.skylineColors.default, 0.35, 14 + i * 1.5
+          );
+        }
+      });
+
+      // Stars
+      stars.forEach(s => {
+        const sx = s.x % (W / CHAR_W + 10), sy = s.y % (H / CHAR_H + 5);
+        if (sy > gRow) return;
+        addIP(
+          sx + (Math.random() - 0.5) * 4, -3 - Math.random() * 12,
+          sx, sy, s.char, biome.starColor, s.brightness * 0.5, 22 + Math.random() * 15
+        );
+      });
+
+      // Ambient filler
+      for (let i = 0; i < 50; i++) {
+        const tc = Math.random() * cols, tr = Math.random() * gRow;
+        const a = Math.random() * Math.PI * 2;
+        addIP(
+          tc + Math.cos(a) * 20, tr + Math.sin(a) * 20, tc, tr,
+          noiseChars[Math.floor(Math.random() * noiseChars.length)],
+          'hsl(40,15%,' + (12 + Math.random() * 10) + '%)', 0.1, 18 + Math.random() * 22
+        );
+      }
+
+      // ── Skill words that fly in from edges ──
+      const allSkillWords = [];
+      AMREEN_SKILLS.forEach(cat => {
+        cat.skills.forEach(sk => {
+          allSkillWords.push({ word: sk, color: cat.color, icon: cat.icon });
+        });
+      });
+      // Shuffle and pick 8-10 to show
+      const shuffled = allSkillWords.sort(() => Math.random() - 0.5).slice(0, 10);
+      shuffled.forEach((sw, i) => {
+        const fromRight = Math.random() > 0.5;
+        const targetRow = 4 + Math.floor(Math.random() * (gRow - 8));
+        const targetCol = Math.floor(cols * 0.15 + Math.random() * cols * 0.7);
+        introSkillWords.push({
+          word: sw.word, color: sw.color, icon: sw.icon,
+          sx: fromRight ? cols + 15 : -sw.word.length - 15,
+          sy: targetRow + (Math.random() - 0.5) * 3,
+          tx: targetCol, ty: targetRow,
+          arriveAt: 40 + i * 6 + Math.random() * 10,
+          fadeOutAt: 85 + Math.random() * 15, // fade before intro ends
+          alpha: 0.35,
+        });
+      });
+    }
+
+    function renderIntro() {
+      const biome = BIOMES[0];
+      ctx.fillStyle = biome.bgColor;
+      ctx.fillRect(-10, -10, W + 20, H + 20);
+      setFont(CHAR_W - 1); ctx.textBaseline = 'top';
+      const noiseChars = '░▒▓█▀▄│─┌┐└┘├┤·.+*:;~^'.split('');
+
+      // Environment particles
+      for (const p of introParticles) {
+        const ct = 16;
+        const t = Math.max(0, Math.min(1, (introFrame - p.arriveAt) / ct));
+        if (introFrame < p.arriveAt - 4 && t <= 0) continue;
+
+        const e = 1 - Math.pow(1 - t, 3);
+        const px = p.sx + (p.tx - p.sx) * e;
+        const py = p.sy + (p.ty - p.sy) * e;
+
+        const arrived = t >= 0.9;
+        const ch = arrived ? p.char : noiseChars[Math.floor(Math.random() * noiseChars.length)];
+
+        let a;
+        if (t <= 0) a = Math.max(0, 1 - (p.arriveAt - introFrame) / 6) * 0.1;
+        else a = (0.1 + t * 0.9) * p.alpha;
+        if (a < 0.01) continue;
+
+        ctx.globalAlpha = a;
+        ctx.fillStyle = p.color;
+        ctx.fillText(ch, px * CHAR_W, py * CHAR_H);
+      }
+
+      // ── Skill words flying in ──
+      for (const sw of introSkillWords) {
+        const ct = 20; // convergence time
+        const t = Math.max(0, Math.min(1, (introFrame - sw.arriveAt) / ct));
+        if (introFrame < sw.arriveAt - 2 && t <= 0) continue;
+
+        // Ease-out
+        const e = 1 - Math.pow(1 - t, 3);
+        const px = sw.sx + (sw.tx - sw.sx) * e;
+        const py = sw.sy + (sw.ty - sw.sy) * e;
+
+        // Fade out near end
+        let a = sw.alpha;
+        if (t < 1) a *= t;
+        if (introFrame > sw.fadeOutAt) {
+          const fadeProgress = (introFrame - sw.fadeOutAt) / (INTRO_DUR - sw.fadeOutAt);
+          a *= Math.max(0, 1 - fadeProgress);
+        }
+        if (a < 0.01) continue;
+
+        // Draw skill word
+        setFont(9);
+        ctx.globalAlpha = a * 0.6;
+        ctx.fillStyle = sw.color;
+        ctx.fillText(sw.icon + ' ' + sw.word, px * CHAR_W, py * CHAR_H);
+
+        // Glow effect behind word
+        if (t > 0.5 && t < 1) {
+          ctx.globalAlpha = a * 0.15 * (1 - t);
+          const glow = ctx.createRadialGradient(
+            px * CHAR_W + sw.word.length * 3, py * CHAR_H,
+            0, px * CHAR_W + sw.word.length * 3, py * CHAR_H,
+            sw.word.length * 5
+          );
+          glow.addColorStop(0, sw.color);
+          glow.addColorStop(1, 'transparent');
+          ctx.fillStyle = glow;
+          ctx.fillRect(px * CHAR_W - 10, py * CHAR_H - 10, sw.word.length * 10 + 20, 30);
+        }
+      }
+
+      // ── "AMREEN QURESHI" materializing near end of intro ──
+      if (introFrame > 60) {
+        const nameProgress = Math.min(1, (introFrame - 60) / 30);
+        const nameAlpha = nameProgress * 0.6;
+        const nameY = Math.floor(rows * 0.4);
+
+        // Glow behind name
+        ctx.globalAlpha = nameAlpha * 0.15;
+        const nameGlow = ctx.createRadialGradient(W/2, nameY * CHAR_H, 0, W/2, nameY * CHAR_H, 200);
+        nameGlow.addColorStop(0, '#d4a850');
+        nameGlow.addColorStop(1, 'transparent');
+        ctx.fillStyle = nameGlow;
+        ctx.fillRect(W/2 - 220, nameY * CHAR_H - 30, 440, 60);
+
+        setFont(14);
+        const nameText = 'A M R E E N   Q U R E S H I';
+        const nameW = ctx.measureText(nameText).width;
+        ctx.globalAlpha = nameAlpha;
+        ctx.fillStyle = '#d4a850';
+        ctx.fillText(nameText, W/2 - nameW/2, nameY * CHAR_H);
+
+        // Subtitle
+        if (introFrame > 75) {
+          const subProgress = Math.min(1, (introFrame - 75) / 20);
+          setFont(8);
+          const subText = 'marketing  ·  communications  ·  project management';
+          const subW = ctx.measureText(subText).width;
+          ctx.globalAlpha = subProgress * 0.35;
+          ctx.fillStyle = '#888';
+          ctx.fillText(subText, W/2 - subW/2, (nameY + 2) * CHAR_H);
+        }
+      }
+
+      setFont(CHAR_W - 1);
+
+      // Gold flash near end
+      if (introFrame > INTRO_DUR - 14 && introFrame < INTRO_DUR - 1) {
+        const ft = (introFrame - (INTRO_DUR - 14)) / 13;
+        ctx.globalAlpha = Math.sin(ft * Math.PI) * 0.18;
+        ctx.fillStyle = '#d4a850';
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // Scanlines
+      ctx.globalAlpha = 0.04; ctx.fillStyle = '#000';
+      for (let y = 0; y < H; y += 4) ctx.fillRect(0, y + 2, W, 2);
+      ctx.globalAlpha = 1;
+      setFont(CHAR_W - 1);
+    }
+
+    if (state === STATE.INTRO) initIntro();
+
+    // ═══ LOOP ═══
+    (function loop() { update(); render(); requestAnimationFrame(loop); })();
+  })();
+  </script>
+</body>
+</html>
